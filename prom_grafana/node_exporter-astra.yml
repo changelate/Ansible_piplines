@@ -1,0 +1,72 @@
+---
+- hosts: agents
+  become: yes
+
+  tasks:
+    - name: Check Python
+      command: python3 --version
+      register: python_check
+      ignore_errors: yes
+      changed_when: false
+  
+    - name: Install Python
+      apt:
+        name: python3
+        state: present
+        update_cache: yes
+      when:
+        - python_check is failed
+  
+    - name: Create group
+      group:
+        name: node_exporter
+        system: yes
+
+    - name: Create user
+      user:
+        name: node_exporter
+        group: node_exporter
+        system: yes
+        shell: /sbin/nologin
+        create_home: no
+
+    - name: Create directory
+      file:
+        path: /opt/node_exporter
+        state: directory
+        owner: node_exporter
+        group: node_exporter
+        mode: '0755'
+
+    - name: Copy Node Exporter
+      copy:
+        src: /home/max/node_exporter-1.6.1.linux-amd64.tar.gz
+        dest: /tmp/
+        mode: '0755'
+
+    - name: Unzip
+      unarchive:
+        src: /tmp/node_exporter-1.6.1.linux-amd64.tar.gz
+        dest: /opt/
+        remote_src: yes
+        mode: '0755'
+
+    - name: Copy service-file
+      copy:
+        src: templates/node_exporter.service
+        dest: /etc/systemd/system/
+
+    - name: Ensure node_exporter binary is executable
+      file:
+        path: /opt/node_exporter-1.6.1.linux-amd64/node_exporter
+        mode: '0755'
+
+    - name: Reload daemons
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable node_exporter
+      systemd:
+        name: node_exporter
+        enabled: yes
+        state: started

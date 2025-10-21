@@ -1,0 +1,87 @@
+---
+- hosts: grafana
+  become: yes
+  
+  vars:
+    grafana_src: "/home/max/grafana-1.6.tar.gz"
+    prometheus_src: "/home/max/prometheus-1.6.tar.gz"
+  
+  tasks:
+    
+    - name: Create groups
+    group:
+      name: "{{item}}"
+      system: yes
+    loop:
+      - grafana-server
+      -prometheus-server
+    
+    
+    - name: Create users
+    user:
+      name: "{{ item.name }}"
+      group: "{{ item.group }}"
+      system: yes
+      shell: /sbin/nologin
+    loop:
+      - { name: grafana-server, group: grafana-server }
+      - { name: prometheus-server, group: prometheus-server }
+    
+    
+    - name: Create directories
+    file:
+      path: "/opt/{{ item.name }}"
+      state: directory
+      owner: "/opt/{{ item.user }}"
+      group: "/opt/{{ item.group }}"
+      mode: "0755"
+    loop:
+      - name: grafana
+        user: grafana-server
+        group: grafana-server
+      -name: prometheus
+        user: prometheus-server
+        group: prometheus-server
+    
+    - name: Copy Programms
+      copy:
+        src: "{{ item.src }}"
+        dest: /tmp/
+        mode: '0755'
+      loop:
+        - { name: "Grafana", src: "{{ grafana_src }}" }
+        - { name: "Prometheus", src: "{{prometheus_src}}" }
+      loop_control:
+        loop_var: item
+        
+    - name: Unzip Programms
+      unarchive:
+        src: "{{item.src}}"
+        dest: /opt/
+        remote_src: yes
+        mode: '0755'
+      loop:
+      - { name: "Grafana", src: "grafana-10.4.0.linux-amd64.tar.gz"}
+      - { name: "Prometheus", src: "prometheus-2.50.0.linux-amd64.tar.gz"}
+      
+    - name: Copy service-files
+      copy:
+        src: "{{ item.src }}"
+        dest: "/etc/systemd/system/ {{ item }}"
+        mode: "0755"
+      loop:
+        - grafana-server.service
+        - prometheus-server.service
+    
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+    
+    - name: Start services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - grafana-server
+        - prometheus-server

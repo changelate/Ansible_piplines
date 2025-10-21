@@ -1,0 +1,81 @@
+---
+- hosts: agents
+  become: yes
+  
+  vars:
+    zabbix_server_ip: "10.12.252.73"
+    zabbix_server_active: "10.12.252.73"
+
+  tasks:
+    - name: Stop agent
+      systemd:
+        name: zabbix-agent
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+    
+    - name: Delete agent
+      apt:
+        name: zabbix-agent
+        state: absent
+        autoremove: yes
+        purge: yes
+  
+    - name: Delete configs
+      file:
+        path: /etc/zabbix
+        state: absent
+  
+    - name: Install zabbix
+      apt: 
+        name: zabbix-agent
+        state: present
+        update_cache: yes
+  
+    - name: Create configs directory
+      file:
+        path: /etc/zabbix
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+  
+    - name: Create config
+      copy:
+        content: |
+          PidFile=/var/run/zabbix/zabbix_agentd.pid
+          LogFile=/var/log/zabbix/zabbix_agentd.log
+          LogFileSize=100
+          Server={{ zabbix_server_ip }}
+          ServerActive={{ zabbix_server_active }}
+          ListenPort=10050
+          ListenIP=0.0.0.0
+          StartAgents=3
+          EnableRemoteCommands=0
+          LogType=file
+          AllowRoot=0
+          Timeout=30
+          Include=/etc/zabbix/zabbix_agentd.d/*.conf
+        dest: /etc/zabbix/zabbix_agentd.conf
+        owner: root
+        group: root
+        mode: "0644"
+      
+    - name: Create catalogs
+      file:
+        path: /etc/zabbix/zabbix_agentd.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    
+    - name: Start service
+      systemd:
+        name: zabbix-agent
+        state: started
+        enabled: yes
+
+    - name: Check service
+      systemd:
+        name: zabbix-agent
+        daemon_reload: yes

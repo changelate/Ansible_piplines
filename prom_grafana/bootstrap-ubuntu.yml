@@ -1,0 +1,61 @@
+---
+- hosts: agents
+  gather_facts: no  # Не собирать факты (там ещё нет Python)
+  remote_user: ubuntu  # ← Имя пользователя, от которого ты можешь зайти (например, стандартный пользователь Ubuntu)
+  become: no
+
+  tasks:
+    - name: Create ansible-agent user with password and add to sudo group
+      raw: |
+        set -e
+        # Создаём пользователя, если его нет
+        id ansible-agent || adduser --disabled-password --gecos "" ansible-agent
+        # Устанавливаем пароль
+        echo "ansible-agent:C9!p5@y2#p8" | chpasswd
+        # Добавляем в sudo
+        usermod -aG sudo ansible-agent
+        # Разрешаем sudo без пароля
+        echo "ansible-agent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/ansible-agent
+        chmod 0440 /etc/sudoers.d/ansible-agent
+        # Проверяем синтаксис sudoers
+        visudo -c
+      register: create_user
+      changed_when: create_user.stdout is defined or create_user.stderr is defined
+
+    - name: Ensure SSH directory for ansible-agent
+      raw: |
+        mkdir -p /home/ansible-agent/.ssh
+        chown ansible-agent:ansible-agent /home/ansible-agent/.ssh
+        chmod 700 /home/ansible-agent/.ssh
+      become_user: ansible-agent
+      become: yes
+
+    - name: Copy SSH public key to ansible-agent (from controller)
+      # Копируем ключ с управляющей машины на удалённый хост
+      delegate_to: "{{ inventory_hostname }}"
+      run_once: yes
+      local_action: >
+        authorized_key
+        user=ansible-agent
+        state=present
+        manage_dir=no
+        key="{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        path=/home/ansible-agent/.ssh/authorized_keys
+        owner=ansible-agent
+        group=ansible-agent
+        mode=0600
+      become: yes
+
+    - name: Install Python 3
+      raw: |
+        test -f /usr/bin/python3 || (apt update && apt install -y python3)
+      register: install_python
+      changed_when: install_python.stdout is defined
+
+    - name: Check Python version
+      raw: python3 --version
+      register: python_version
+
+    - name: Show result
+      debug:
+        msg: "Bootstrapped {{ inventory_hostname }}: Python {{ python_version.stdout }}, user ansible-agent created"
