@@ -1,0 +1,65 @@
+---
+- name: Deploy net_script for zabbix
+  hosts: all
+  become: yes
+  tasks:
+  
+  - name: Check directory
+    file:
+      path: /etc/zabbix/scripts
+      state: directory
+      owner: zabbix
+      group: zabbix
+      mode: 0755
+  
+  - name: Copy script
+    copy:
+      src: net_total_traffic.py
+      dest: "/etc/zabbix/scripts/net_total_traffic.py"
+      mode: 0755
+  
+  - name: Check if zabbix-agent2 exists
+    command: systemctl is-active zabbix-agent2
+    ignore_errors: yes
+    register: agent2_active
+    changed_when: false
+
+  - name: Check if zabbix-agent exists
+    command: systemctl is-active zabbix-agent
+    ignore_errors: yes
+    register: agent1_active
+    changed_when: false
+
+  - name: Set type to agent2
+    set_fact:
+      zabbix_agent_type: agent2
+    when: agent2_active.rc == 0
+  
+  - name: Set type to agent1
+    set_fact:
+      zabbix_agent_type: agent
+    when:
+      - agent2_active.rc != 0
+      - agent1_active.rc == 0
+
+  - name: Create UserParameter config for agent2
+    copy:
+      content: |
+        UserParameter=net.total.traffic,/usr/bin/python3 /etc/zabbix/scripts/net_total_traffic.py
+      dest: "/etc/zabbix/zabbix_agent2.d/network_config.conf"
+      mode: 0644
+    when: zabbix_agent_type == "agent2"
+  
+  - name: Create UserParameter config for agent1
+    copy:
+      content: |
+        UserParameter=net.total.traffic,/usr/bin/python3 /etc/zabbix/scripts/net_total_traffic.py
+      dest: "/etc/zabbix/zabbix_agentd.conf.d/"
+      mode: 0644
+    when: zabbix_agent_type == "agent"
+  
+  - name: Restart zabbix agent
+    systemd:
+      name: "zabbix-{{zabbix_agent_type}}"
+      state: restarted
+      daemon_reload: yes
