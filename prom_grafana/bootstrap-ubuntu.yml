@@ -1,7 +1,7 @@
 ---
 - hosts: agents
-  gather_facts: no  # Не собирать факты (там ещё нет Python)
-  remote_user: ubuntu  # ← Имя пользователя, от которого ты можешь зайти (например, стандартный пользователь Ubuntu)
+  gather_facts: no  
+  remote_user: ubuntu  
   become: no
 
   tasks:
@@ -58,4 +58,5 @@
 
     - name: Show result
       debug:
+
         msg: "Bootstrapped {{ inventory_hostname }}: Python {{ python_version.stdout }}, user ansible-agent created"
